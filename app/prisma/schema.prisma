@@ -1,0 +1,95 @@
+// Datový model — Zadání A: Rezervace v ordinaci
+// 5 entit (Patient, Doctor, OfficeHours, Appointment, Procedure) + M:N vazba
+// Appointment <-> Procedure přes AppointmentProcedure.
+//
+// Parciální unikátní index na (doctorId, startsAt) u aktivních rezervací
+// brání dvěma rezervacím na stejný termín u stejného lékaře — to je v
+// zadání výslovná podmínka klienta. Zrušená rezervace (status CANCELLED)
+// termín uvolní, aby šel znovu obsadit.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Patient {
+  id           String        @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String        @unique
+  phone        String?
+  appointments Appointment[]
+  createdAt    DateTime      @default(now())
+}
+
+model Doctor {
+  id           String        @id @default(uuid())
+  firstName    String
+  lastName     String
+  specialty    String
+  officeHours  OfficeHours[]
+  appointments Appointment[]
+  createdAt    DateTime      @default(now())
+}
+
+// Ordinační hodiny — kdy má lékař vůbec otevřeno (den v týdnu + čas od-do).
+// Appointment se validuje proti tomuto rozsahu v aplikační vrstvě (ne v DB),
+// protože kontrola "je termín v otevírací době" je business pravidlo.
+model OfficeHours {
+  id        String @id @default(uuid())
+  doctorId  String
+  doctor    Doctor @relation(fields: [doctorId], references: [id])
+  dayOfWeek Int // 0 = pondělí ... 6 = neděle
+  startTime String // "08:00"
+  endTime   String // "16:00"
+
+  @@index([doctorId])
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model Appointment {
+  id         String                  @id @default(uuid())
+  patientId  String
+  patient    Patient                 @relation(fields: [patientId], references: [id])
+  doctorId   String
+  doctor     Doctor                  @relation(fields: [doctorId], references: [id])
+  startsAt   DateTime
+  status     AppointmentStatus       @default(SCHEDULED)
+  procedures AppointmentProcedure[]
+  createdAt  DateTime                @default(now())
+
+  // Nedovolí dvě AKTIVNÍ rezervace na stejný termín u stejného lékaře.
+  // Skutečné omezení je parciální unikátní index (WHERE status <> 'CANCELLED')
+  // vytvořený ručně v migraci 20261107120000_partial_unique_active_slot –
+  // Prisma schema nepodporuje podmíněné @@unique, proto tu je jen běžný
+  // index pro rychlé vyhledávání a omezení je zdokumentované v migraci.
+  @@index([doctorId, startsAt])
+  @@index([patientId])
+}
+
+model Procedure {
+  id           String                  @id @default(uuid())
+  name         String
+  code         String                  @unique
+  appointments AppointmentProcedure[]
+}
+
+// M:N: jedna návštěva může mít víc výkonů, tentýž výkon se opakuje u mnoha návštěv.
+model AppointmentProcedure {
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  procedureId   String
+  procedure     Procedure   @relation(fields: [procedureId], references: [id])
+  note          String?
+
+  @@id([appointmentId, procedureId])
+}
