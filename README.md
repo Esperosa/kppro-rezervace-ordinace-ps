@@ -90,3 +90,5 @@ docker-compose.yml     - orchestrace PostgreSQL + Node.js
 .env.example           - vzor konfigurace prostředí
 docs/                  - DOKUMENTACE.md a podklady pro odevzdání
 ```
+
+Repozitář projektu: https://github.com/Esperosa/kppro-rezervace-ordinace-ps
